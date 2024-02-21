@@ -7,10 +7,12 @@ import gi
 import platformdirs
 import soco
 from aiohttp import web
+from textual import on, work
 from textual.app import App
 from textual.binding import Binding
-from textual.containers import Vertical
-from textual.widgets import DataTable, Static
+from textual.containers import Vertical, Container
+from textual.reactive import var
+from textual.widgets import DataTable, LoadingIndicator, Static
 
 gi.require_version("Tracker", "3.0")
 from gi.repository import Tracker  # noqa: E402
@@ -59,20 +61,6 @@ def fetch_music():
     return records
 
 
-async def spawn_http(host, port, music_dir):
-    app = web.Application()
-    app.add_routes([web.static("/", music_dir)])
-
-    runner = web.AppRunner(app)
-    await runner.setup()
-
-    site = web.TCPSite(runner, host, port)
-    await site.start()
-
-    while True:
-        await asyncio.sleep(3600)
-
-
 class AlbumList(DataTable):
     BINDINGS = [
         Binding("k", "cursor_up", "Cursor Up", show=False),
@@ -82,7 +70,9 @@ class AlbumList(DataTable):
 
 class ControllerApp(App):
     CSS = """
-    Screen { layout: horizontal; }
+    Screen {
+        layout: horizontal;
+    }
 
     AlbumList {
         width: 60%;
@@ -90,16 +80,24 @@ class ControllerApp(App):
         scrollbar-size-vertical: 1;
     }
 
-    Vertical {
+    Container {
         align: center top;
     }
 
     #now-playing {
         width: 80%;
-        margin-top: 1;
+        margin-top: 2;
         padding-top: 1;
         content-align: center middle;
         border: vkey $accent;
+    }
+
+    #footer {
+        height: 1;
+    }
+
+    #sonos-player {
+        content-align: right bottom;
     }
     """
 
@@ -107,9 +105,41 @@ class ControllerApp(App):
         Binding("q", "quit", "Quit", show=False, priority=True),
     ]
 
+    ready_check = var(3)
+
     def __init__(self):
         self.music_dir = platformdirs.user_music_dir()
+        self.controller_ip = this_ip()
+        super().__init__()
 
+    def compose(self):
+        yield LoadingIndicator()
+        yield AlbumList(cursor_type="row")
+
+        with Vertical():
+            with Container():
+                now_playing = Static(id="now-playing")
+                now_playing.border_title = "Now Playing"
+                yield now_playing
+
+            with Container(id="footer"):
+                yield Static(id="sonos-player")
+
+    def on_mount(self):
+        table = self.query_one(AlbumList)
+        table.display = False
+
+        self.load_data()
+        self.find_sonos()
+        self.spawn_http("0.0.0.0", SISC_PORT)
+
+    def watch_ready_check(self, ready_check):
+        if ready_check == 0:
+            self.query_one(LoadingIndicator).display = False
+            self.query_one(AlbumList).display = True
+
+    @work(thread=True)
+    async def load_data(self):
         self.library = {}
         records = fetch_music()
         for artist, album, _, location in sorted(records):
@@ -120,31 +150,34 @@ class ControllerApp(App):
             trimmed_path = path.removeprefix(self.music_dir)
             self.library[artist, album].append(trimmed_path)
 
-        self.controller_ip = this_ip()
-        self.sonos, *_ = soco.discover()
-
-        super().__init__()
-
-    def compose(self):
-        yield AlbumList(cursor_type="row")
-
-        with Vertical():
-            now_playing = Static(id="now-playing")
-            now_playing.border_title = "Now Playing"
-            yield now_playing
-
-    def on_mount(self):
-        # populate data table
         table = self.query_one(AlbumList)
         table.add_columns("Artist", "Album")
         table.add_rows(sorted(self.library.keys()))
+        self.ready_check -= 1
 
-        # spin up the HTTP server
-        self.run_worker(
-            spawn_http("0.0.0.0", SISC_PORT, self.music_dir), exclusive=True
-        )
+    @work(thread=True)
+    async def find_sonos(self):
+        self.sonos, *_ = soco.discover()
+        self.query_one("#sonos-player").update(f"Sonos: {self.sonos.player_name}")
+        self.ready_check -= 1
 
-    def on_data_table_row_selected(self, event):
+    @work
+    async def spawn_http(self, host, port):
+        app = web.Application()
+        app.add_routes([web.static("/", self.music_dir)])
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+
+        site = web.TCPSite(runner, host, port)
+        await site.start()
+
+        self.ready_check -= 1
+        while True:
+            await asyncio.sleep(3600)
+
+    @on(DataTable.RowSelected)
+    def select_album(self, event):
         # clear previous queue
         self.sonos.clear_queue()
 
@@ -163,9 +196,11 @@ class ControllerApp(App):
         now_playing.update(f"{album},\nby {artist}")
 
     def on_unmount(self):
-        """Is this how we handle graceful shutdowns?"""
-        self.sonos.stop()
-        self.sonos.clear_queue()
+        try:
+            self.sonos.stop()
+            self.sonos.clear_queue()
+        except AttributeError:
+            pass
 
 
 def main():
