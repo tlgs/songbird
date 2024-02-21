@@ -1,4 +1,3 @@
-import asyncio
 import socket
 import sys
 from urllib.parse import urlparse
@@ -139,7 +138,7 @@ class ControllerApp(App):
             self.query_one(AlbumList).display = True
 
     @work(thread=True)
-    async def load_data(self):
+    def load_data(self):
         self.library = {}
         records = fetch_music()
         for artist, album, _, location in sorted(records):
@@ -156,7 +155,7 @@ class ControllerApp(App):
         self.ready_check -= 1
 
     @work(thread=True)
-    async def find_sonos(self):
+    def find_sonos(self):
         self.sonos, *_ = soco.discover()
         self.query_one("#sonos-player").update(f"Sonos: {self.sonos.player_name}")
         self.ready_check -= 1
@@ -166,15 +165,12 @@ class ControllerApp(App):
         app = web.Application()
         app.add_routes([web.static("/", self.music_dir)])
 
-        runner = web.AppRunner(app)
-        await runner.setup()
-
-        site = web.TCPSite(runner, host, port)
+        self.http_runner = web.AppRunner(app)
+        await self.http_runner.setup()
+        site = web.TCPSite(self.http_runner, host, port)
         await site.start()
 
         self.ready_check -= 1
-        while True:
-            await asyncio.sleep(3600)
 
     @on(DataTable.RowSelected)
     def select_album(self, event):
@@ -195,10 +191,12 @@ class ControllerApp(App):
         now_playing = self.query_one("#now-playing")
         now_playing.update(f"{album},\nby {artist}")
 
-    def on_unmount(self):
+    async def on_unmount(self):
         try:
             self.sonos.stop()
             self.sonos.clear_queue()
+
+            await self.http_runner.cleanup()
         except AttributeError:
             pass
 
