@@ -8,6 +8,7 @@ dependencies = [
     "platformdirs ~= 4.2",
     "textual ~= 0.51",
 ]
+scripts = { sisc = "sisc:main" }
 
 [project.optional-dependencies]
 dev = ["pre-commit"]
