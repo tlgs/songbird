@@ -17,7 +17,7 @@ dev = [
 ]
 
 [tool.ruff.lint]
-select = ["F", "E", "W", "I", "N", "UP", "B", "RUF"]
+select = ["F", "E", "W", "I", "N", "UP", "B"]
 
 [build-system]
 requires = ["setuptools"]
