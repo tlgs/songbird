@@ -11,7 +11,10 @@ dependencies = [
 scripts = { sisc = "sisc:main" }
 
 [project.optional-dependencies]
-dev = ["pre-commit"]
+dev = [
+  "pre-commit",
+  "textual-dev",
+]
 
 [build-system]
 requires = ["setuptools"]
