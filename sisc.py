@@ -8,12 +8,11 @@ from aiohttp import web
 from textual import on, work
 from textual.app import App
 from textual.binding import Binding
-from textual.containers import Vertical, Container
+from textual.containers import Center, Container, Horizontal, Vertical
 from textual.widgets import DataTable, Static
 
 gi.require_version("Tracker", "3.0")
 from gi.repository import Tracker  # noqa: E402
-
 
 SISC_PORT = 8080
 
@@ -40,7 +39,10 @@ def fetch_music():
           ?song a nmm:MusicPiece ;
             nie:title ?title ;
             nmm:trackNumber ?trackno ;
-            nmm:musicAlbum [ nie:title ?album ; nmm:albumArtist [ nmm:artistName ?artist ] ] ;
+            nmm:musicAlbum [
+              nie:title ?album ;
+              nmm:albumArtist [ nmm:artistName ?artist ]
+            ] ;
             nie:isStoredAs ?as .
           ?as nie:url ?url .
         }
@@ -49,7 +51,7 @@ def fetch_music():
 
     records = []
     while cursor.next():
-        artist, album, raw_n, url = [cursor.get_string(i)[0] for i in range(4)]
+        artist, album, raw_n, url = (cursor.get_string(i)[0] for i in range(4))
         records.append((artist, album, int(raw_n), url))
 
     cursor.close()
@@ -60,23 +62,22 @@ def fetch_music():
 
 class AlbumList(DataTable):
     BINDINGS = [
-        Binding("k", "cursor_up", "Cursor Up", show=False),
-        Binding("j", "cursor_down", "Cursor Down", show=False),
+        Binding("k", "cursor_up", "Cursor Up"),
+        Binding("j", "cursor_down", "Cursor Down"),
     ]
 
 
 class ControllerApp(App):
     CSS = """
-    Screen { layout: horizontal; }
-    LoadingIndicator { background: black 0%; }
+    LoadingIndicator {
+        background: black 0%;
+    }
 
     AlbumList {
         width: 60%;
         overflow-x: hidden;
         scrollbar-size-vertical: 1;
     }
-
-    Container { align: center top; }
 
     #now-playing {
         width: 80%;
@@ -86,8 +87,10 @@ class ControllerApp(App):
         border: vkey $accent;
     }
 
-    #footer { height: 1; }
-    #footer > Static { text-align: right; }
+    #sonos-player {
+        height: 1;
+        text-align: right;
+    }
     """
 
     BINDINGS = [
@@ -100,20 +103,19 @@ class ControllerApp(App):
         super().__init__()
 
     def compose(self):
-        yield AlbumList(cursor_type="row")
+        with Horizontal():
+            yield AlbumList(cursor_type="row")
 
-        with Vertical():
-            with Container():
-                yield Static(id="now-playing")
-
-            with Container(id="footer"):
+            with Vertical():
+                yield Center(Static(id="now-playing"))
+                yield Container()
                 yield Static(id="sonos-player")
 
     def on_mount(self):
         self.query_one("#now-playing").border_title = "Now Playing"
 
         self.query_one(AlbumList).loading = True
-        self.query_one("#footer").loading = True
+        self.query_one("#sonos-player").loading = True
 
         self.load_data()
         self.find_sonos()
@@ -144,7 +146,7 @@ class ControllerApp(App):
         self.sonos, *_ = soco.discover()
 
         self.query_one("#sonos-player").update(f"Sonos: {self.sonos.player_name}")
-        self.query_one("#footer").loading = False
+        self.query_one("#sonos-player").loading = False
 
     @work
     async def spawn_http(self, host, port):
