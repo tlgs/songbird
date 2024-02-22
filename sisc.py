@@ -1,6 +1,5 @@
 import socket
 import sys
-from urllib.parse import urlparse
 
 import gi
 import platformdirs
@@ -10,8 +9,7 @@ from textual import on, work
 from textual.app import App
 from textual.binding import Binding
 from textual.containers import Vertical, Container
-from textual.reactive import var
-from textual.widgets import DataTable, LoadingIndicator, Static
+from textual.widgets import DataTable, Static
 
 gi.require_version("Tracker", "3.0")
 from gi.repository import Tracker  # noqa: E402
@@ -69,9 +67,8 @@ class AlbumList(DataTable):
 
 class ControllerApp(App):
     CSS = """
-    Screen {
-        layout: horizontal;
-    }
+    Screen { layout: horizontal; }
+    LoadingIndicator { background: black 0%; }
 
     AlbumList {
         width: 60%;
@@ -79,9 +76,7 @@ class ControllerApp(App):
         scrollbar-size-vertical: 1;
     }
 
-    Container {
-        align: center top;
-    }
+    Container { align: center top; }
 
     #now-playing {
         width: 80%;
@@ -91,20 +86,13 @@ class ControllerApp(App):
         border: vkey $accent;
     }
 
-    #footer {
-        height: 1;
-    }
-
-    #sonos-player {
-        content-align: right bottom;
-    }
+    #footer { height: 1; }
+    #footer > Static { text-align: right; }
     """
 
     BINDINGS = [
         Binding("q", "quit", "Quit", show=False, priority=True),
     ]
-
-    ready_check = var(3)
 
     def __init__(self):
         self.music_dir = platformdirs.user_music_dir()
@@ -112,30 +100,24 @@ class ControllerApp(App):
         super().__init__()
 
     def compose(self):
-        yield LoadingIndicator()
         yield AlbumList(cursor_type="row")
 
         with Vertical():
             with Container():
-                now_playing = Static(id="now-playing")
-                now_playing.border_title = "Now Playing"
-                yield now_playing
+                yield Static(id="now-playing")
 
             with Container(id="footer"):
                 yield Static(id="sonos-player")
 
     def on_mount(self):
-        table = self.query_one(AlbumList)
-        table.display = False
+        self.query_one("#now-playing").border_title = "Now Playing"
+
+        self.query_one(AlbumList).loading = True
+        self.query_one("#footer").loading = True
 
         self.load_data()
         self.find_sonos()
         self.spawn_http("0.0.0.0", SISC_PORT)
-
-    def watch_ready_check(self, ready_check):
-        if ready_check == 0:
-            self.query_one(LoadingIndicator).display = False
-            self.query_one(AlbumList).display = True
 
     @work(thread=True)
     def load_data(self):
@@ -145,20 +127,24 @@ class ControllerApp(App):
             if (artist, album) not in self.library:
                 self.library[artist, album] = []
 
-            path = urlparse(location).path
-            trimmed_path = path.removeprefix(self.music_dir)
+            assert location.startswith("file://")
+            trimmed_path = location.removeprefix(f"file://{self.music_dir}")
+
             self.library[artist, album].append(trimmed_path)
 
         table = self.query_one(AlbumList)
         table.add_columns("Artist", "Album")
         table.add_rows(sorted(self.library.keys()))
-        self.ready_check -= 1
+
+        table.loading = False
+        table.focus()
 
     @work(thread=True)
     def find_sonos(self):
         self.sonos, *_ = soco.discover()
+
         self.query_one("#sonos-player").update(f"Sonos: {self.sonos.player_name}")
-        self.ready_check -= 1
+        self.query_one("#footer").loading = False
 
     @work
     async def spawn_http(self, host, port):
@@ -169,8 +155,6 @@ class ControllerApp(App):
         await self.http_runner.setup()
         site = web.TCPSite(self.http_runner, host, port)
         await site.start()
-
-        self.ready_check -= 1
 
     @on(DataTable.RowSelected)
     def select_album(self, event):
