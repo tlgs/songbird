@@ -16,6 +16,9 @@ dev = [
   "textual-dev",
 ]
 
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "N", "UP", "B", "RUF"]
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
