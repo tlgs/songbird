@@ -126,17 +126,18 @@ class ControllerApp(App):
         self.library = {}
         records = fetch_music()
         for artist, album, _, location in sorted(records):
-            if (artist, album) not in self.library:
-                self.library[artist, album] = []
+            t = artist, album
+            if t not in self.library:
+                self.library[t] = []
 
             assert location.startswith("file://")
             trimmed_path = location.removeprefix(f"file://{self.music_dir}")
 
-            self.library[artist, album].append(trimmed_path)
+            self.library[t].append(trimmed_path)
 
         table = self.query_one(AlbumList)
-        table.add_columns("Artist", "Album")
-        table.add_rows(sorted(self.library.keys()))
+        table.add_columns("Album", "Artist")
+        table.add_rows(reversed(t) for t in self.library.keys())
 
         table.loading = False
         table.focus()
@@ -164,7 +165,7 @@ class ControllerApp(App):
         self.sonos.clear_queue()
 
         # fetch tracks to dump in queue
-        artist, album = event.control.get_row(event.row_key)
+        album, artist = event.control.get_row(event.row_key)
         for location in self.library[artist, album]:
             self.sonos.add_uri_to_queue(
                 f"http://{self.controller_ip}:{SISC_PORT}{location}"
@@ -178,13 +179,10 @@ class ControllerApp(App):
         now_playing.update(f"{album},\nby {artist}")
 
     async def on_unmount(self):
-        try:
-            self.sonos.stop()
-            self.sonos.clear_queue()
+        self.sonos.stop()
+        self.sonos.clear_queue()
 
-            await self.http_runner.cleanup()
-        except AttributeError:
-            pass
+        await self.http_runner.cleanup()
 
 
 def main():
