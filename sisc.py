@@ -1,5 +1,6 @@
 import socket
 import sys
+import xml.etree.ElementTree as ElementTree
 
 import gi
 import platformdirs
@@ -81,15 +82,19 @@ class ControllerApp(App):
 
     #now-playing {
         width: 80%;
-        margin-top: 2;
-        padding-top: 1;
+        margin-top: 1;
         content-align: center middle;
-        border: vkey $accent;
     }
 
-    #sonos-player {
+    #status-bar {
         height: 1;
-        text-align: right;
+        layout: grid;
+        grid-size: 3;
+        grid-columns: 2fr 1fr 1fr;
+    }
+
+    #sonos-status, #http-status {
+        text-align: center;
     }
     """
 
@@ -98,6 +103,8 @@ class ControllerApp(App):
     ]
 
     def __init__(self):
+        self.sonos = None
+        self.http_runner = None
         self.music_dir = platformdirs.user_music_dir()
         self.controller_ip = this_ip()
         super().__init__()
@@ -107,19 +114,19 @@ class ControllerApp(App):
             yield AlbumList(cursor_type="row")
 
             with Vertical():
-                yield Center(Static(id="now-playing"))
+                yield Center(Static("No music selected", id="now-playing"))
                 yield Container()
-                yield Static(id="sonos-player")
+                with Horizontal(id="status-bar"):
+                    yield Static()
+                    yield Static("Sonos [red]⬤[/red]", id="sonos-status")
+                    yield Static("HTTP [red]⬤[/red]", id="http-status")
 
     def on_mount(self):
-        self.query_one("#now-playing").border_title = "Now Playing"
-
         self.query_one(AlbumList).loading = True
-        self.query_one("#sonos-player").loading = True
 
         self.load_data()
         self.find_sonos()
-        self.spawn_http("0.0.0.0", SISC_PORT)
+        self.spawn_http(self.controller_ip, SISC_PORT)
 
     @work(thread=True)
     def load_data(self):
@@ -145,9 +152,37 @@ class ControllerApp(App):
     @work(thread=True)
     def find_sonos(self):
         self.sonos, *_ = soco.discover()
+        self.query_one("#sonos-status").update("Sonos [green]⬤[/green]")
 
-        self.query_one("#sonos-player").update(f"Sonos: {self.sonos.player_name}")
-        self.query_one("#sonos-player").loading = False
+        self.call_from_thread(self.set_interval, 1, self.update_current_track)
+
+    @work(thread=True)
+    def update_current_track(self):
+        track_info = self.sonos.get_current_track_info()
+        raw_document = track_info.get("metadata")
+        if not raw_document:
+            return
+
+        root = ElementTree.fromstring(raw_document)
+
+        namespaces = {
+            "": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
+            "dc": "http://purl.org/dc/elements/1.1/",
+            "upnp": "urn:schemas-upnp-org:metadata-1-0/upnp/",
+            "r": "urn:schemas-rinconnetworks-com:metadata-1-0/",
+        }
+
+        title = root.find("item/dc:title", namespaces)
+        album = root.find("item/upnp:album", namespaces)
+        artist = root.find("item/dc:creator", namespaces)
+
+        display = f"[bold]{title.text}[/bold]"
+        if album is not None and artist is not None:
+            display += f"\n{artist.text} ⦁ {album.text}"
+
+        np = self.query_one("#now-playing")
+        if display != np.renderable:
+            self.call_from_thread(np.update, display)
 
     @work
     async def spawn_http(self, host, port):
@@ -159,24 +194,22 @@ class ControllerApp(App):
         site = web.TCPSite(self.http_runner, host, port)
         await site.start()
 
+        self.query_one("#http-status").update("HTTP [green]⬤[/green]")
+
     @on(DataTable.RowSelected)
     def select_album(self, event):
-        # clear previous queue
+        t = event.control.get_row(event.row_key)
+        self.play_album(*t)
+
+    @work(thread=True, group="control", exclusive=True)
+    def play_album(self, album, artist):
         self.sonos.clear_queue()
 
-        # fetch tracks to dump in queue
-        album, artist = event.control.get_row(event.row_key)
         for location in self.library[artist, album]:
-            self.sonos.add_uri_to_queue(
-                f"http://{self.controller_ip}:{SISC_PORT}{location}"
-            )
+            uri = f"http://{self.controller_ip}:{SISC_PORT}{location}"
+            self.sonos.add_uri_to_queue(uri)
 
-        # start playing
         self.sonos.play_from_queue(0)
-
-        # update UI
-        now_playing = self.query_one("#now-playing")
-        now_playing.update(f"{album},\nby {artist}")
 
     async def on_unmount(self):
         self.sonos.stop()
