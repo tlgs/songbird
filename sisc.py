@@ -10,7 +10,7 @@ from textual import on, work
 from textual.app import App
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import DataTable, Static
+from textual.widgets import DataTable, Footer, Static
 
 gi.require_version("Tracker", "3.0")
 from gi.repository import Tracker  # noqa: E402
@@ -61,14 +61,15 @@ def fetch_music():
 
 class AlbumList(DataTable):
     BINDINGS = [
-        Binding("k", "cursor_up", "Cursor Up"),
-        Binding("j", "cursor_down", "Cursor Down"),
+        Binding("k", "cursor_up", "Cursor Up", show=False),
+        Binding("j", "cursor_down", "Cursor Down", show=False),
     ]
 
 
-class ControllerApp(App):
+class ControllerApp(App, inherit_bindings=False):
     CSS = """
     $primary: #feffac;
+    $secondary: #45ffca;
 
     Screen {
       layout: horizontal;
@@ -79,7 +80,9 @@ class ControllerApp(App):
     }
 
     AlbumList {
+      height: 100%;
       width: 7fr;
+      margin: 0 0 1 1;
       overflow-x: hidden;
 
       scrollbar-size-vertical: 1;
@@ -110,6 +113,7 @@ class ControllerApp(App):
 
     Vertical {
       width: 3fr;
+      margin: 0 0 1 0;
       align: center middle;
 
       #now-playing {
@@ -129,10 +133,34 @@ class ControllerApp(App):
         text-align: center;
       }
     }
+
+    Footer {
+      background: $background 0%;
+      color: $text;
+      dock: bottom;
+      height: 1;
+
+      & > .footer--highlight {
+        background: $boost;
+        color: $text;
+      }
+
+      & > .footer--key {
+        background: $background 0%;
+        color: $primary;
+        text-style: none;
+      }
+
+      & > .footer--highlight-key {
+        background: $boost;
+        color: $secondary;
+        text-style: none;
+      }
+    }
     """
 
     BINDINGS = [
-        Binding("q", "quit", "Quit", priority=True),
+        Binding("q,ctrl+c", "quit", "Quit"),
     ]
 
     def __init__(self):
@@ -157,6 +185,8 @@ class ControllerApp(App):
                 yield Container()
                 yield Static("Sonos [red]⬤[/red]", id="sonos-status")
                 yield Static("HTTP [red]⬤[/red]", id="http-status")
+
+        yield Footer()
 
     def on_mount(self):
         self.query_one(AlbumList).loading = True
