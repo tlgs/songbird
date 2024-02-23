@@ -1,6 +1,7 @@
-# sisc
+# songbird
 
-A stupidly incomplete Sonos controller:
+A stupidly incomplete Sonos caster TUI app:
 
-- depends on GNOME's Tracker to quickly find indexed music
-- only supports selecting a full album
+- no way to select Sonos unit
+- no controls other than album selection
+- depends on [GNOME's Tracker](https://tracker.gnome.org/) to find indexed music files

@@ -1,5 +1,5 @@
 [project]
-name = "sisc"
+name = "songbird"
 version = "0.1.0"
 dependencies = [
     "PyGObject ~= 3.46",
@@ -8,7 +8,7 @@ dependencies = [
     "platformdirs ~= 4.2",
     "textual ~= 0.51",
 ]
-scripts = { sisc = "sisc:main" }
+scripts = { songbird = "songbird:main" }
 
 [project.optional-dependencies]
 dev = [
