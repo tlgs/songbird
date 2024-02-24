@@ -60,6 +60,23 @@ def fetch_music():
     return records
 
 
+def parse_sonos_track_metadata(document):
+    namespaces = {
+        "": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
+        "dc": "http://purl.org/dc/elements/1.1/",
+        "upnp": "urn:schemas-upnp-org:metadata-1-0/upnp/",
+        "r": "urn:schemas-rinconnetworks-com:metadata-1-0/",
+    }
+
+    root = ElementTree.fromstring(document)
+
+    title = root.find("item/dc:title", namespaces)
+    album = root.find("item/upnp:album", namespaces)
+    artist = root.find("item/dc:creator", namespaces)
+
+    return title, album, artist
+
+
 class AlbumList(DataTable):
     BINDINGS = [
         Binding("k", "cursor_up", "Cursor Up", show=False),
@@ -200,12 +217,12 @@ class ControllerApp(App, inherit_bindings=False):
     def on_mount(self):
         self.query_one(AlbumList).loading = True
 
-        self.load_data()
+        self.load_music_library()
         self.find_sonos()
         self.spawn_http(self.http_host, self.http_port)
 
     @work(thread=True)
-    def load_data(self):
+    def load_music_library(self):
         records = fetch_music()
         for artist, album, _, location in sorted(records):
             t = artist, album
@@ -308,22 +325,6 @@ class ControllerApp(App, inherit_bindings=False):
     def action_adjust_volume(self, v):
         self.sonos.volume = min(100, max(0, self.sonos.volume + v))
 
-    def _parse_track_metadata(self, document):
-        namespaces = {
-            "": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
-            "dc": "http://purl.org/dc/elements/1.1/",
-            "upnp": "urn:schemas-upnp-org:metadata-1-0/upnp/",
-            "r": "urn:schemas-rinconnetworks-com:metadata-1-0/",
-        }
-
-        root = ElementTree.fromstring(document)
-
-        title = root.find("item/dc:title", namespaces)
-        album = root.find("item/upnp:album", namespaces)
-        artist = root.find("item/dc:creator", namespaces)
-
-        return title, album, artist
-
     @work(thread=True)
     def update_now_playing(self):
         track_info = self.sonos.get_current_track_info()
@@ -331,7 +332,7 @@ class ControllerApp(App, inherit_bindings=False):
         if not document:
             return
 
-        title, album, artist = self._parse_track_metadata(document)
+        title, album, artist = parse_sonos_track_metadata(document)
 
         display = f"[bold]{title.text}[/bold]"
         if album is not None and artist is not None:
