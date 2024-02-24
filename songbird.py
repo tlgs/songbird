@@ -35,17 +35,17 @@ def fetch_music():
     )
 
     stmt = """
-        SELECT ?artist ?album ?trackno ?url {
-          ?song a nmm:MusicPiece ;
-            nie:title ?title ;
-            nmm:trackNumber ?trackno ;
-            nmm:musicAlbum [
-              nie:title ?album ;
-              nmm:albumArtist [ nmm:artistName ?artist ]
-            ] ;
-            nie:isStoredAs ?as .
-          ?as nie:url ?url .
-        }
+    SELECT ?artist ?album ?trackno ?url {
+        ?song a nmm:MusicPiece ;
+        nie:title ?title ;
+        nmm:trackNumber ?trackno ;
+        nmm:musicAlbum [
+            nie:title ?album ;
+            nmm:albumArtist [ nmm:artistName ?artist ]
+        ] ;
+        nie:isStoredAs ?as .
+        ?as nie:url ?url .
+    }
     """
     cursor = conn.query(stmt)
 
