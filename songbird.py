@@ -6,6 +6,7 @@ import gi
 import platformdirs
 import soco
 from aiohttp import web
+from soco.exceptions import SoCoUPnPException
 from textual import on, work
 from textual.app import App
 from textual.binding import Binding
@@ -161,6 +162,14 @@ class ControllerApp(App, inherit_bindings=False):
 
     BINDINGS = [
         Binding("q,ctrl+c", "quit", "Quit"),
+        Binding("h", "help", "Help"),
+        Binding("z", "player_prev", "Prev", show=False),
+        Binding("x", "player_play", "Play", show=False),
+        Binding("c", "player_pause", "Pause", show=False),
+        Binding("v", "player_stop", "Stop", show=False),
+        Binding("b", "player_next", "Next", show=False),
+        Binding("+", "adjust_volume(+5)", "Volume up", show=False),
+        Binding("-", "adjust_volume(-5)", "Volume down", show=False),
     ]
 
     def __init__(self):
@@ -220,35 +229,7 @@ class ControllerApp(App, inherit_bindings=False):
         self.sonos, *_ = soco.discover()
         self.query_one("#sonos-status").update("Sonos [#45ffca]⬤[/#45ffca]")
 
-        self.call_from_thread(self.set_interval, 1, self.update_current_track)
-
-    @work(thread=True)
-    def update_current_track(self):
-        track_info = self.sonos.get_current_track_info()
-        raw_document = track_info.get("metadata")
-        if not raw_document:
-            return
-
-        root = ElementTree.fromstring(raw_document)
-
-        namespaces = {
-            "": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
-            "dc": "http://purl.org/dc/elements/1.1/",
-            "upnp": "urn:schemas-upnp-org:metadata-1-0/upnp/",
-            "r": "urn:schemas-rinconnetworks-com:metadata-1-0/",
-        }
-
-        title = root.find("item/dc:title", namespaces)
-        album = root.find("item/upnp:album", namespaces)
-        artist = root.find("item/dc:creator", namespaces)
-
-        display = f"[bold]{title.text}[/bold]"
-        if album is not None and artist is not None:
-            display += f"\n{artist.text} ⦁ {album.text}"
-
-        np = self.query_one("#now-playing")
-        if display != np.renderable:
-            self.call_from_thread(np.update, display)
+        self.call_from_thread(self.set_interval, 1, self.update_now_playing)
 
     @work
     async def spawn_http(self, host, port):
@@ -264,20 +245,101 @@ class ControllerApp(App, inherit_bindings=False):
 
     @on(DataTable.RowSelected)
     def select_album(self, event):
-        t = event.control.get_row(event.row_key)
-
         if self.sonos:
-            self.play_album(*t)
+            self.add_album_to_queue_and_play(*event.control.get_row(event.row_key))
 
-    @work(thread=True, group="control", exclusive=True)
-    def play_album(self, album, artist):
+    @work(thread=True, group="playback_control", exclusive=True)
+    def add_album_to_queue_and_play(self, album, artist):
         self.sonos.clear_queue()
 
         for location in self.library[artist, album]:
             uri = f"http://{self.http_host}:{self.http_port}{location}"
             self.sonos.add_uri_to_queue(uri)
 
-        self.sonos.play_from_queue(0)
+        self.sonos.play()
+
+    @work(thread=True, group="playback_control", exclusive=True)
+    def action_player_prev(self):
+        try:
+            track_info = self.sonos.get_current_track_info()
+        except AttributeError:
+            return
+
+        position = f"0{track_info['position']}"[-8:]
+
+        # jump to previous track if at beginning, else seek current track to start
+        try:
+            if position < "00:00:04":
+                self.sonos.previous()
+            else:
+                self.sonos.seek("00:00:00")
+        except SoCoUPnPException:
+            pass
+
+    @work(thread=True, group="playback_control", exclusive=True)
+    def action_player_play(self):
+        try:
+            self.sonos.play()
+        except (AttributeError, SoCoUPnPException):
+            pass
+
+    @work(thread=True, group="playback_control", exclusive=True)
+    def action_player_pause(self):
+        try:
+            self.sonos.pause()
+        except (AttributeError, SoCoUPnPException):
+            pass
+
+    @work(thread=True, group="playback_control", exclusive=True)
+    def action_player_stop(self):
+        try:
+            self.sonos.stop()
+        except AttributeError:
+            pass
+
+    @work(thread=True, group="playback_control", exclusive=True)
+    def action_player_next(self):
+        try:
+            self.sonos.next()
+        except (AttributeError, SoCoUPnPException):
+            pass
+
+    @work(thread=True, group="playback_control", exclusive=True)
+    def action_adjust_volume(self, v):
+        self.sonos.volume = min(100, max(0, self.sonos.volume + v))
+
+    def _parse_track_metadata(self, document):
+        namespaces = {
+            "": "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
+            "dc": "http://purl.org/dc/elements/1.1/",
+            "upnp": "urn:schemas-upnp-org:metadata-1-0/upnp/",
+            "r": "urn:schemas-rinconnetworks-com:metadata-1-0/",
+        }
+
+        root = ElementTree.fromstring(document)
+
+        title = root.find("item/dc:title", namespaces)
+        album = root.find("item/upnp:album", namespaces)
+        artist = root.find("item/dc:creator", namespaces)
+
+        return title, album, artist
+
+    @work(thread=True)
+    def update_now_playing(self):
+        track_info = self.sonos.get_current_track_info()
+        document = track_info.get("metadata")
+        if not document:
+            return
+
+        title, album, artist = self._parse_track_metadata(document)
+
+        display = f"[bold]{title.text}[/bold]"
+        if album is not None and artist is not None:
+            display += f"\n{artist.text} ⦁ {album.text}"
+
+        np = self.query_one("#now-playing")
+        if display != np.renderable:
+            self.call_from_thread(np.update, display)
 
     async def on_unmount(self):
         if self.sonos:
