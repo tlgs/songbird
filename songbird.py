@@ -1,3 +1,4 @@
+import collections
 import socket
 import sys
 import xml.etree.ElementTree as ElementTree
@@ -190,8 +191,8 @@ class ControllerApp(App, inherit_bindings=False):
     ]
 
     def __init__(self):
-        self.library = {}
-        self.music_dir = platformdirs.user_music_dir()
+        self.music_index = collections.defaultdict(list)
+        self.user_music_dir = platformdirs.user_music_dir()
 
         self.sonos = None
 
@@ -225,18 +226,14 @@ class ControllerApp(App, inherit_bindings=False):
     def load_music_library(self):
         records = fetch_music()
         for artist, album, _, location in sorted(records):
-            t = artist, album
-            if t not in self.library:
-                self.library[t] = []
-
             assert location.startswith("file://")
-            trimmed_path = location.removeprefix(f"file://{self.music_dir}")
+            trimmed_path = location.removeprefix(f"file://{self.user_music_dir}")
 
-            self.library[t].append(trimmed_path)
+            self.music_index[artist, album].append(trimmed_path)
 
         table = self.query_one(AlbumList)
-        table.add_columns("Album", "Artist")
-        table.add_rows(reversed(t) for t in self.library.keys())
+        table.add_columns("Artist", "Album")
+        table.add_rows(self.music_index.keys())
 
         table.loading = False
         table.focus()
@@ -251,7 +248,7 @@ class ControllerApp(App, inherit_bindings=False):
     @work
     async def spawn_http(self, host, port):
         app = web.Application()
-        app.add_routes([web.static("/", self.music_dir)])
+        app.add_routes([web.static("/", self.user_music_dir)])
 
         self.http_runner = web.AppRunner(app)
         await self.http_runner.setup()
@@ -262,14 +259,16 @@ class ControllerApp(App, inherit_bindings=False):
 
     @on(DataTable.RowSelected)
     def select_album(self, event):
-        if self.sonos:
-            self.add_album_to_queue_and_play(*event.control.get_row(event.row_key))
+        self.add_album_to_queue_and_play(*event.control.get_row(event.row_key))
 
     @work(thread=True, group="playback_control", exclusive=True)
-    def add_album_to_queue_and_play(self, album, artist):
-        self.sonos.clear_queue()
+    def add_album_to_queue_and_play(self, artist, album):
+        try:
+            self.sonos.clear_queue()
+        except AttributeError:
+            return
 
-        for location in self.library[artist, album]:
+        for location in self.music_index[artist, album]:
             uri = f"http://{self.http_host}:{self.http_port}{location}"
             self.sonos.add_uri_to_queue(uri)
 
@@ -323,7 +322,10 @@ class ControllerApp(App, inherit_bindings=False):
 
     @work(thread=True, group="playback_control", exclusive=True)
     def action_adjust_volume(self, v):
-        self.sonos.volume = min(100, max(0, self.sonos.volume + v))
+        try:
+            self.sonos.volume = min(100, max(0, self.sonos.volume + v))
+        except AttributeError:
+            pass
 
     @work(thread=True)
     def update_now_playing(self):
@@ -343,12 +345,16 @@ class ControllerApp(App, inherit_bindings=False):
             self.call_from_thread(np.update, display)
 
     async def on_unmount(self):
-        if self.sonos:
+        try:
             self.sonos.stop()
             self.sonos.clear_queue()
+        except AttributeError:
+            pass
 
-        if self.http_runner:
+        try:
             await self.http_runner.cleanup()
+        except AttributeError:
+            pass
 
 
 def main():
