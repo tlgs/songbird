@@ -159,8 +159,8 @@ class ControllerApp(App, inherit_bindings=False):
         Binding("c", "player_pause", "Pause", show=False),
         Binding("v", "player_stop", "Stop", show=False),
         Binding("b", "player_next", "Next", show=False),
-        Binding("+", "adjust_volume(+5)", "Volume up", show=False),
-        Binding("-", "adjust_volume(-5)", "Volume down", show=False),
+        Binding("+", "player_adjust_volume(+5)", "Volume up", show=False),
+        Binding("-", "player_adjust_volume(-5)", "Volume down", show=False),
     ]
 
     def __init__(self):
@@ -171,7 +171,7 @@ class ControllerApp(App, inherit_bindings=False):
 
         self.http_runner = None
         self.http_host = self_ip()
-        self.http_port = 8080
+        self.http_port = 8080  # TODO: configure through CLI args
 
         super().__init__()
 
@@ -282,9 +282,9 @@ class ControllerApp(App, inherit_bindings=False):
             pass
 
     @work(thread=True, group="playback_control", exclusive=True)
-    def action_adjust_volume(self, v):
+    def action_player_adjust_volume(self, change):
         try:
-            self.sonos.volume = min(100, max(0, self.sonos.volume + v))
+            self.sonos.volume = min(100, max(0, self.sonos.volume + change))
         except AttributeError:
             pass
 
