@@ -80,7 +80,7 @@ def parse_sonos_track_metadata(document):
 
 class AlbumList(DataTable, inherit_bindings=False):
     BINDINGS = [
-        Binding("enter,space", "select_cursor", "Select", show=False),
+        Binding("enter", "select_cursor", "Select", show=False),
         Binding("k,up", "cursor_up", "Cursor Up", show=False),
         Binding("j,down", "cursor_down", "Cursor Down", show=False),
     ]
@@ -152,7 +152,7 @@ class ControllerApp(App, inherit_bindings=False):
     """
 
     BINDINGS = [
-        Binding("escape", "quit", "Quit"),
+        Binding("ctrl+q", "quit", "Quit"),
         Binding("f1", "show_help_screen", "Help"),
         Binding("z", "player_prev", "Prev", show=False),
         Binding("x", "player_play", "Play", show=False),
