@@ -11,7 +11,7 @@ from soco.exceptions import SoCoUPnPException
 from textual import on, work
 from textual.app import App
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Center
 from textual.widgets import DataTable, Footer, Static
 
 gi.require_version("Tracker", "3.0")
@@ -78,20 +78,27 @@ def parse_sonos_track_metadata(document):
     return title, album, artist
 
 
-class AlbumList(DataTable):
+class AlbumList(DataTable, inherit_bindings=False):
     BINDINGS = [
-        Binding("k", "cursor_up", "Cursor Up", show=False),
-        Binding("j", "cursor_down", "Cursor Down", show=False),
+        Binding("enter,space", "select_cursor", "Select", show=False),
+        Binding("k,up", "cursor_up", "Cursor Up", show=False),
+        Binding("j,down", "cursor_down", "Cursor Down", show=False),
     ]
 
 
 class ControllerApp(App, inherit_bindings=False):
     CSS = """
-    $primary: #feffac;
-    $secondary: #45ffca;
+    #now-playing {
+      height: 4;
+      margin: 0 2;
+      border: ascii $panel-lighten-2;
+      text-align: center;
+    }
 
-    Screen {
-      layout: horizontal;
+    Center {
+      height: 1fr;
+      margin: 0 2;
+      border: ascii $panel-lighten-2;
     }
 
     LoadingIndicator {
@@ -99,30 +106,20 @@ class ControllerApp(App, inherit_bindings=False):
     }
 
     AlbumList {
-      height: 100%;
-      width: 7fr;
-      margin: 0 0 1 1;
+      height: 1fr;
+      width: auto;
       overflow-x: hidden;
-
-      scrollbar-size-vertical: 1;
-
-      scrollbar-background: $background-lighten-1;
-      scrollbar-background-hover: $background-lighten-1;
-      scrollbar-background-active: $background-lighten-1;
-
-      scrollbar-color: $panel;
-      scrollbar-color-hover: $primary;
-      scrollbar-color-active: $primary;
+      scrollbar-size-vertical: 0;
 
       & > .datatable--header,
       & > .datatable--header-hover {
         text-style: bold;
         background: $background 0%;
-        color: $primary;
+        color: $secondary-lighten-3;
       }
 
       & > .datatable--cursor {
-        background: $primary
+        background: $primary-lighten-3;
       }
 
       & > .datatable--hover {
@@ -130,34 +127,10 @@ class ControllerApp(App, inherit_bindings=False):
       }
     }
 
-    Vertical {
-      width: 3fr;
-      margin: 0 0 1 0;
-      align: center middle;
-
-      #now-playing {
-        margin: 2 0 0 2;
-        padding: 0 1;
-        content-align: center middle;
-      }
-    }
-
-    #status-bar {
-      height: 1;
-      layout: grid;
-      grid-size: 3;
-      grid-columns: 1fr 1fr 1fr;
-
-      & > * {
-        text-align: center;
-      }
-    }
-
     Footer {
-      background: $background 0%;
-      color: $text;
-      dock: bottom;
       height: 1;
+      dock: bottom;
+      background: $background 0%;
 
       & > .footer--highlight {
         background: $boost;
@@ -166,21 +139,21 @@ class ControllerApp(App, inherit_bindings=False):
 
       & > .footer--key {
         background: $background 0%;
-        color: $primary;
+        color: $primary-lighten-2;
         text-style: none;
       }
 
       & > .footer--highlight-key {
         background: $boost;
-        color: $secondary;
+        color: $secondary-lighten-2;
         text-style: none;
       }
     }
     """
 
     BINDINGS = [
-        Binding("q,ctrl+c", "quit", "Quit"),
-        Binding("h", "help", "Help"),
+        Binding("escape", "quit", "Quit"),
+        Binding("f1", "show_help_screen", "Help"),
         Binding("z", "player_prev", "Prev", show=False),
         Binding("x", "player_play", "Play", show=False),
         Binding("c", "player_pause", "Pause", show=False),
@@ -203,16 +176,8 @@ class ControllerApp(App, inherit_bindings=False):
         super().__init__()
 
     def compose(self):
-        yield AlbumList(cursor_type="row")
-
-        with Vertical():
-            yield Static("No music selected", id="now-playing")
-            yield Container()
-            with Horizontal(id="status-bar"):
-                yield Container()
-                yield Static("Sonos [red]⬤[/red]", id="sonos-status")
-                yield Static("HTTP [red]⬤[/red]", id="http-status")
-
+        yield Static("No music selected", id="now-playing")
+        yield Center(AlbumList(cursor_type="row"))
         yield Footer()
 
     def on_mount(self):
@@ -241,8 +206,6 @@ class ControllerApp(App, inherit_bindings=False):
     @work(thread=True)
     def find_sonos(self):
         self.sonos, *_ = soco.discover()
-        self.query_one("#sonos-status").update("Sonos [#45ffca]⬤[/#45ffca]")
-
         self.call_from_thread(self.set_interval, 1, self.update_now_playing)
 
     @work
@@ -254,8 +217,6 @@ class ControllerApp(App, inherit_bindings=False):
         await self.http_runner.setup()
         site = web.TCPSite(self.http_runner, host, port)
         await site.start()
-
-        self.query_one("#http-status").update("HTTP [#45ffca]⬤[/#45ffca]")
 
     @on(DataTable.RowSelected)
     def select_album(self, event):
