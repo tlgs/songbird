@@ -18,6 +18,7 @@ dev = [
 
 [tool.ruff.lint]
 select = ["F", "E", "W", "I", "N", "UP", "B"]
+ignore = ["E501"]
 
 [build-system]
 requires = ["setuptools"]

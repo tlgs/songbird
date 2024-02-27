@@ -216,7 +216,15 @@ class ControllerApp(App, inherit_bindings=False):
         self.http_runner = web.AppRunner(app)
         await self.http_runner.setup()
         site = web.TCPSite(self.http_runner, host, port)
-        await site.start()
+        try:
+            await site.start()
+        except OSError as err:
+            if err.errno == 98:
+                self.exit(
+                    message=f"songbird: could not bind to port {self.http_port} (already in use)"
+                )
+            else:
+                self.exit(return_code=1, message=err)
 
     @on(DataTable.RowSelected)
     def select_album(self, event):
