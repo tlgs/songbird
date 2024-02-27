@@ -221,10 +221,11 @@ class ControllerApp(App, inherit_bindings=False):
         except OSError as err:
             if err.errno == 98:
                 self.exit(
-                    message=f"songbird: could not bind to port {self.http_port} (already in use)"
+                    f"could not bind to port {self.http_port} (already in use)",
+                    return_code=1,
                 )
             else:
-                self.exit(return_code=1, message=err)
+                self.exit(err, return_code=1)
 
     @on(DataTable.RowSelected)
     def select_album(self, event):
@@ -328,7 +329,9 @@ class ControllerApp(App, inherit_bindings=False):
 
 def main():
     app = ControllerApp()
-    app.run()
+    if (err := app.run()) is not None:
+        print(f"songbird: {err}", file=sys.stderr)
+
     return app.return_code
 
 
