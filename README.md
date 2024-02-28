@@ -1,7 +1,9 @@
 # songbird
 
-A stupidly incomplete Sonos caster TUI app:
+A non-portable, barebones Sonos local music caster TUI application.
 
-- no way to select Sonos unit
+Sporting exquisite non-features like:
+
+- [GNOME Tracker](https://tracker.gnome.org/) dependence
+- inability to select Sonos unit
 - ~~no controls other than album selection~~
-- depends on [GNOME's Tracker](https://tracker.gnome.org/) to find indexed music files
