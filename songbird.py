@@ -1,6 +1,7 @@
 import collections
 import socket
 import sys
+import textwrap
 import xml.etree.ElementTree as ElementTree
 
 import gi
@@ -12,7 +13,8 @@ from textual import on, work
 from textual.app import App
 from textual.binding import Binding
 from textual.containers import Center
-from textual.widgets import DataTable, Footer, Static
+from textual.screen import ModalScreen
+from textual.widgets import DataTable, Footer, Label, Static
 
 gi.require_version("Tracker", "3.0")
 from gi.repository import Tracker  # noqa: E402
@@ -84,6 +86,43 @@ class AlbumList(DataTable, inherit_bindings=False):
         Binding("k,up", "cursor_up", "Cursor Up", show=False),
         Binding("j,down", "cursor_down", "Cursor Down", show=False),
     ]
+
+
+class HelpScreen(ModalScreen):
+    CSS = """
+    HelpScreen {
+      align: center middle;
+
+      & > Label {
+        padding: 2 5 1 5;
+      }
+    }
+    """
+
+    def compose(self):
+        text = textwrap.dedent(
+            """\
+            [#3b689f]K[/ #3b689f]   Move cursor up
+            [#3b689f]J[/ #3b689f]   Move cursor down
+
+            [#3b689f]Z[/ #3b689f]   Previous
+            [#3b689f]X[/ #3b689f]   Play
+            [#3b689f]C[/ #3b689f]   Pause
+            [#3b689f]V[/ #3b689f]   Stop
+            [#3b689f]B[/ #3b689f]   Next
+
+            [#3b689f]+[/ #3b689f]   Volume up
+            [#3b689f]-[/ #3b689f]   Volume down
+            """
+        )
+
+        yield Label(text)
+
+    def on_key(self, event):
+        self.app.pop_screen()
+
+    def on_click(self):
+        self.app.pop_screen()
 
 
 class ControllerApp(App, inherit_bindings=False):
@@ -313,6 +352,12 @@ class ControllerApp(App, inherit_bindings=False):
         np = self.query_one("#now-playing")
         if display != np.renderable:
             self.call_from_thread(np.update, display)
+
+    def action_show_help_screen(self):
+        if self.query_one(AlbumList).loading:
+            return
+
+        self.push_screen(HelpScreen())
 
     async def on_unmount(self):
         try:
