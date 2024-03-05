@@ -119,10 +119,14 @@ class HelpScreen(ModalScreen):
         yield Label(text)
 
     def on_key(self, event):
-        self.app.pop_screen()
+        self._quit()
 
     def on_click(self):
+        self._quit()
+
+    def _quit(self):
         self.app.pop_screen()
+        self.app.timer.resume()
 
 
 class ControllerApp(App, inherit_bindings=False):
@@ -207,6 +211,7 @@ class ControllerApp(App, inherit_bindings=False):
         self.user_music_dir = platformdirs.user_music_dir()
 
         self.sonos = None
+        self.timer = None
 
         self.http_runner = None
         self.http_host = self_ip()
@@ -245,7 +250,11 @@ class ControllerApp(App, inherit_bindings=False):
     @work(thread=True)
     def find_sonos(self):
         self.sonos, *_ = soco.discover()
-        self.call_from_thread(self.set_interval, 1, self.update_now_playing)
+
+        def create_timer():
+            self.timer = self.set_interval(1, self.update_now_playing)
+
+        self.call_from_thread(create_timer)
 
     @work
     async def spawn_http(self, host, port):
@@ -254,6 +263,7 @@ class ControllerApp(App, inherit_bindings=False):
 
         self.http_runner = web.AppRunner(app)
         await self.http_runner.setup()
+
         site = web.TCPSite(self.http_runner, host, port)
         try:
             await site.start()
@@ -349,14 +359,15 @@ class ControllerApp(App, inherit_bindings=False):
         if album is not None and artist is not None:
             display += f"\n{artist.text} ⦁ {album.text}"
 
-        np = self.query_one("#now-playing")
-        if display != np.renderable:
-            self.call_from_thread(np.update, display)
+        now_playing = self.query_one("#now-playing")
+        if display != now_playing.renderable:
+            self.call_from_thread(now_playing.update, display)
 
     def action_show_help_screen(self):
         if self.query_one(AlbumList).loading:
             return
 
+        self.timer.pause()
         self.push_screen(HelpScreen())
 
     async def on_unmount(self):
