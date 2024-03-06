@@ -1,7 +1,9 @@
 # songbird
 
-A non-portable, barebones Sonos local music caster TUI application.
+songbird is a non-portable, barebones Sonos local music caster TUI app.
 Because I don't feel like running a music server and setting up a Sonos music source.
+
+![demo screenshot](misc/demo.png)
 
 Sporting exquisite non-features like:
 
