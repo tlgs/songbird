@@ -353,7 +353,10 @@ class ControllerApp(App, inherit_bindings=False):
         if not document:
             return
 
-        title, album, artist = parse_sonos_track_metadata(document)
+        try:
+            title, album, artist = parse_sonos_track_metadata(document)
+        except ElementTree.ParseError:
+            return
 
         display = f"[bold]{title.text}[/bold]"
         if album is not None and artist is not None:
