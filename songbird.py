@@ -250,6 +250,7 @@ class ControllerApp(App, inherit_bindings=False):
     @work(thread=True)
     def find_sonos(self):
         self.sonos, *_ = soco.discover()
+        self.sonos.end_direct_control_session()
 
         def create_timer():
             self.timer = self.set_interval(1, self.update_now_playing)
