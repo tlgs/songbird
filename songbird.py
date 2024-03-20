@@ -8,6 +8,7 @@ import gi
 import platformdirs
 import soco
 from aiohttp import web
+from requests.exceptions import ConnectionError
 from soco.exceptions import SoCoUPnPException
 from textual import on, work
 from textual.app import App
@@ -392,7 +393,13 @@ class ControllerApp(App, inherit_bindings=False):
 
 def main():
     app = ControllerApp()
-    if (err := app.run()) is not None:
+
+    try:
+        err = app.run()
+    except ConnectionError:
+        err = "left out in the sun"
+
+    if err is not None:
         print(f"songbird: {err}", file=sys.stderr)
 
     return app.return_code
