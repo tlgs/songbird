@@ -14,6 +14,7 @@ from textual import on, work
 from textual.app import App
 from textual.binding import Binding
 from textual.containers import Center
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Label, Static
 
@@ -367,7 +368,12 @@ class ControllerApp(App, inherit_bindings=False):
         if album is not None and artist is not None:
             display += f"\n{artist.text} ⦁ {album.text}"
 
-        now_playing = self.query_one("#now-playing")
+        try:
+            now_playing = self.query_one("#now-playing")
+        except NoMatches:
+            # this can happen if the HelpScreen was pushed while the function is running
+            return
+
         if display != now_playing.renderable:
             self.call_from_thread(now_playing.update, display)
 
